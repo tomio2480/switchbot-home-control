@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwitchBot Home Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .controls {
+            margin-bottom: 30px;
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .device-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .device-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .device-name {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .device-type {
+            color: #999;
+            font-size: 0.9em;
+        }
+
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-on {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-off {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .device-info {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            color: #555;
+            font-size: 0.95em;
+        }
+
+        .info-label {
+            font-weight: 500;
+        }
+
+        .device-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .device-actions button {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px 15px;
+            font-size: 0.9em;
+        }
+
+        .btn-on {
+            background: #28a745;
+        }
+
+        .btn-on:hover {
+            background: #218838;
+        }
+
+        .btn-off {
+            background: #dc3545;
+        }
+
+        .btn-off:hover {
+            background: #c82333;
+        }
+
+        .btn-toggle {
+            background: #17a2b8;
+        }
+
+        .btn-toggle:hover {
+            background: #138496;
+        }
+
+        .brightness-control {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .brightness-label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .brightness-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+            background: #ddd;
+        }
+
+        .brightness-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .brightness-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        /* Toast notification styles */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 250px;
+        }
+
+        .toast-success {
+            border-left: 4px solid #28a745;
+        }
+
+        .toast-error {
+            border-left: 4px solid #dc3545;
+        }
+
+        .toast-icon {
+            font-size: 1.5em;
+        }
+
+        .toast-message {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
+        .infrared-section {
+            margin-top: 40px;
+        }
+
+        .section-title {
+            color: white;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .devices-grid {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏠 SwitchBot Home Control</h1>
+            <p class="subtitle">ブラウザからデバイスを制御</p>
+        </header>
+
+        <div class="controls">
+            <button onclick="loadDevices()">🔄 更新</button>
+        </div>
+
+        <div id="message"></div>
+        <div id="loading" class="loading">デバイスを読み込み中...</div>
+        <div id="devices" class="devices-grid"></div>
+
+        <div id="infrared-section" class="infrared-section" style="display: none;">
+            <h2 class="section-title">📡 赤外線リモコンデバイス</h2>
+            <div id="infrared-devices" class="devices-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        let devices = [];
+        let infraredDevices = [];
+
+        // Load devices on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadDevices();
+        });
+
+        async function loadDevices() {
+            const loading = document.getElementById('loading');
+            const devicesContainer = document.getElementById('devices');
+            const infraredContainer = document.getElementById('infrared-devices');
+            const infraredSection = document.getElementById('infrared-section');
+
+            loading.style.display = 'block';
+            devicesContainer.innerHTML = '';
+            infraredContainer.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/devices/status');
+                const data = await response.json();
+
+                if (data.success) {
+                    devices = data.devices;
+                    infraredDevices = data.infraredDevices;
+
+                    loading.style.display = 'none';
+
+                    // Display physical devices
+                    devices.forEach(device => {
+                        const card = createDeviceCard(device);
+                        devicesContainer.appendChild(card);
+                    });
+
+                    // Display infrared devices
+                    if (infraredDevices.length > 0) {
+                        infraredSection.style.display = 'block';
+                        infraredDevices.forEach(device => {
+                            const card = createInfraredDeviceCard(device);
+                            infraredContainer.appendChild(card);
+                        });
+                    }
+                } else {
+                    showError('デバイスの読み込みに失敗しました: ' + data.error);
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                showError('エラー: ' + error.message);
+                loading.style.display = 'none';
+            }
+        }
+
+        function createDeviceCard(device) {
+            const card = document.createElement('div');
+            card.className = 'device-card';
+            card.setAttribute('data-device-id', device.deviceId);
+
+            const status = device.status || {};
+            const power = status.power;
+
+            let statusBadge = '';
+            if (power !== undefined) {
+                statusBadge = `<span class="status-badge ${power === 'on' ? 'status-on' : 'status-off'}" data-status-badge="${device.deviceId}">${power === 'on' ? 'ON' : 'OFF'}</span>`;
+            } else {
+                statusBadge = `<span class="status-badge status-info" data-status-badge="${device.deviceId}">INFO</span>`;
+            }
+
+            let infoHtml = '';
+            if (status) {
+                infoHtml = '<div class="device-info">';
+
+                if (status.temperature !== undefined) {
+                    infoHtml += `<div class="info-item"><span class="info-label">温度:</span><span>${status.temperature}°C</span></div>`;
+                }
+                if (status.humidity !== undefined) {
+                    infoHtml += `<div class="info-item"><span class="info-label">湿度:</span><span>${status.humidity}%</span></div>`;
+                }
+                if (status.brightness !== undefined && typeof status.brightness === 'number') {
+                    infoHtml += `<div class="info-item"><span class="info-label">明るさ:</span><span>${status.brightness}%</span></div>`;
+                }
+                if (status.battery !== undefined) {
+                    infoHtml += `<div class="info-item"><span class="info-label">バッテリー:</span><span>${status.battery}%</span></div>`;
+                }
+                if (status.lockState !== undefined) {
+                    infoHtml += `<div class="info-item"><span class="info-label">鍵状態:</span><span>${status.lockState === 'locked' ? '施錠' : '開錠'}</span></div>`;
+                }
+                if (status.moveDetected !== undefined) {
+                    infoHtml += `<div class="info-item"><span class="info-label">動き検知:</span><span>${status.moveDetected ? 'あり' : 'なし'}</span></div>`;
+                }
+
+                infoHtml += '</div>';
+            }
+
+            let actionsHtml = '';
+            const deviceType = device.deviceType.toLowerCase();
+
+            // Show control buttons for devices that support power commands
+            if (deviceType.includes('plug') || deviceType.includes('bulb') || deviceType.includes('light')) {
+                actionsHtml += `
+                    <div class="device-actions">
+                        <button class="btn-on" onclick="sendCommand('${device.deviceId}', 'on')">ON</button>
+                        <button class="btn-off" onclick="sendCommand('${device.deviceId}', 'off')">OFF</button>
+                        <button class="btn-toggle" onclick="sendCommand('${device.deviceId}', 'toggle')">Toggle</button>
+                    </div>
+                `;
+
+                // Add brightness control for bulbs
+                if (deviceType.includes('bulb') && status.brightness !== undefined) {
+                    actionsHtml += `
+                        <div class="brightness-control">
+                            <label class="brightness-label">明るさ: <span id="brightness-${device.deviceId}">${status.brightness}</span>%</label>
+                            <input type="range" class="brightness-slider" min="0" max="100" value="${status.brightness}"
+                                onchange="setBrightness('${device.deviceId}', this.value)">
+                        </div>
+                    `;
+                }
+            }
+
+            card.innerHTML = `
+                <div class="device-header">
+                    <div>
+                        <div class="device-name">${device.deviceName}</div>
+                        <div class="device-type">${device.deviceType}</div>
+                    </div>
+                    ${statusBadge}
+                </div>
+                ${infoHtml}
+                ${actionsHtml}
+            `;
+
+            return card;
+        }
+
+        function createInfraredDeviceCard(device) {
+            const card = document.createElement('div');
+            card.className = 'device-card';
+
+            card.innerHTML = `
+                <div class="device-header">
+                    <div>
+                        <div class="device-name">${device.deviceName}</div>
+                        <div class="device-type">${device.remoteType}</div>
+                    </div>
+                    <span class="status-badge status-info">リモコン</span>
+                </div>
+                <div class="device-info">
+                    <div class="info-item">
+                        <span class="info-label">ID:</span>
+                        <span>${device.deviceId}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Hub ID:</span>
+                        <span>${device.hubDeviceId}</span>
+                    </div>
+                </div>
+                <p style="color: #666; font-size: 0.9em; margin-top: 10px;">
+                    ※ 赤外線デバイスは状態取得に対応していません
+                </p>
+            `;
+
+            return card;
+        }
+
+        function updateDeviceStatusBadge(deviceId, powerState) {
+            if (!powerState) return;
+
+            const badge = document.querySelector(`[data-status-badge="${deviceId}"]`);
+            if (!badge) return;
+
+            // Update badge class
+            badge.className = 'status-badge';
+            if (powerState === 'on') {
+                badge.classList.add('status-on');
+                badge.textContent = 'ON';
+            } else if (powerState === 'off') {
+                badge.classList.add('status-off');
+                badge.textContent = 'OFF';
+            }
+        }
+
+        async function sendCommand(deviceId, command) {
+            try {
+                const response = await fetch(`/api/devices/${deviceId}/${command}`, {
+                    method: 'POST',
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    // Use the actual power state returned from the API
+                    const newPowerState = data.powerState;
+                    let commandText;
+
+                    if (newPowerState === 'on') {
+                        commandText = 'ON';
+                    } else if (newPowerState === 'off') {
+                        commandText = 'OFF';
+                    } else {
+                        commandText = command === 'toggle' ? 'トグル' : (command === 'on' ? 'ON' : 'OFF');
+                    }
+
+                    // Update UI status badge with actual state
+                    if (newPowerState && (newPowerState === 'on' || newPowerState === 'off')) {
+                        updateDeviceStatusBadge(deviceId, newPowerState);
+                    }
+
+                    showToast(`デバイスを${commandText}にしました`, 'success');
+                } else {
+                    showToast('コマンド送信失敗: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('エラー: ' + error.message, 'error');
+            }
+        }
+
+        async function setBrightness(deviceId, brightness) {
+            // Update the display immediately
+            const label = document.getElementById(`brightness-${deviceId}`);
+            if (label) {
+                label.textContent = brightness;
+            }
+
+            try {
+                const response = await fetch(`/api/devices/${deviceId}/brightness`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ brightness: parseInt(brightness) }),
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast(`明るさを${brightness}%に設定しました`, 'success');
+                } else {
+                    showToast('明るさ設定失敗: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('エラー: ' + error.message, 'error');
+            }
+        }
+
+        function showError(message) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="error-message">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="success-message">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 3000);
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+
+            const icon = type === 'success' ? '✓' : '✗';
+            toast.innerHTML = `
+                <span class="toast-icon">${icon}</span>
+                <span class="toast-message">${message}</span>
+            `;
+
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# Environment variables (機密情報)
+.env
+
+# Node.js (削除予定)
+node_modules/
+dist/
+dist-electron/
+*.log
+
+# C# / .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userprefs
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

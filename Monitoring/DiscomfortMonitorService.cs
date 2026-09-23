@@ -96,9 +96,10 @@ public class DiscomfortMonitorService : BackgroundService
 
             return new MeterReading(deviceName, temperature, humidity);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            // One unreachable meter should not hide alerts from the others
+            // One failing meter (HTTP error, timeout, malformed JSON) should not hide alerts from the others.
+            // SwitchBotClient takes no cancellation token, so a cancellation here is an HTTP timeout.
             _logger.LogWarning(ex, "Skipped {DeviceName}: status request failed", deviceName);
             return null;
         }

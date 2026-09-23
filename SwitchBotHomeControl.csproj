@@ -14,6 +14,8 @@
     <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
+    <!-- Keep the test project's sources out of the app's default compile globs -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

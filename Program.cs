@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using SwitchBotHomeControl.Api;
+using SwitchBotHomeControl.Monitoring;
+using SwitchBotHomeControl.Notifications;
 using SwitchBotHomeControl.WebServer.Controllers;
 
 namespace SwitchBotHomeControl;
@@ -51,11 +53,30 @@ class Program
             return;
         }
 
+        // Discomfort index notification is enabled only when a webhook URL is configured
+        var discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL");
+        if (string.IsNullOrWhiteSpace(discordWebhookUrl))
+        {
+            discordWebhookUrl = null;
+        }
+        else if (!DiscordWebhookClient.IsValidWebhookUrl(discordWebhookUrl))
+        {
+            MessageBox.Show(
+                "DISCORD_WEBHOOK_URL が Discord の Webhook URL ではありません。\n" +
+                "https://discord.com/api/webhooks/... の形式で .env に設定してください。\n" +
+                "不快指数の通知は無効のまま起動します。",
+                "Configuration Warning",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+            discordWebhookUrl = null;
+        }
+
         // Initialize SwitchBot client
         _client = new SwitchBotClient(token, secret);
 
         // Start web server in background thread
-        var webServerThread = new Thread(() => StartWebServer(token, secret, projectRoot))
+        var webServerThread = new Thread(() => StartWebServer(token, secret, discordWebhookUrl, projectRoot))
         {
             IsBackground = true
         };
@@ -78,7 +99,7 @@ class Program
         GC.KeepAlive(mutex);
     }
 
-    static void StartWebServer(string token, string secret, string projectRoot)
+    static void StartWebServer(string token, string secret, string? discordWebhookUrl, string projectRoot)
     {
         try
         {
@@ -87,6 +108,12 @@ class Program
             // Add services
             builder.Services.AddControllers();
             builder.Services.AddSingleton(new SwitchBotClient(token, secret));
+
+            if (discordWebhookUrl != null)
+            {
+                builder.Services.AddSingleton(new DiscordWebhookClient(discordWebhookUrl));
+                builder.Services.AddHostedService<DiscomfortMonitorService>();
+            }
 
             // Configure Kestrel to listen on specific port
             builder.WebHost.UseUrls($"http://localhost:{Port}");

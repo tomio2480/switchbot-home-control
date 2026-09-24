@@ -19,3 +19,6 @@ obj/
 # OS
 .DS_Store
 Thumbs.db
+
+# Recorded meter readings and notification state (local data)
+data/

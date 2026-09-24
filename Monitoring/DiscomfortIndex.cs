@@ -58,6 +58,35 @@ public static class DiscomfortIndex
         _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Unknown discomfort level")
     };
 
-    public static bool IsComfortable(this DiscomfortLevel level) =>
-        level is DiscomfortLevel.Neutral or DiscomfortLevel.Pleasant;
+    /// <summary>
+    /// The inclusive lower bound used by <see cref="Classify"/>; null for the lowest level.
+    /// </summary>
+    public static double? LowerBound(this DiscomfortLevel level) => level switch
+    {
+        DiscomfortLevel.Cold => null,
+        DiscomfortLevel.Chilly => 55,
+        DiscomfortLevel.Neutral => 60,
+        DiscomfortLevel.Pleasant => 65,
+        DiscomfortLevel.NotHot => 70,
+        DiscomfortLevel.SlightlyHot => 75,
+        DiscomfortLevel.HotAndSweaty => 80,
+        DiscomfortLevel.UnbearablyHot => 85,
+        _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Unknown discomfort level")
+    };
+
+    /// <summary>
+    /// Text colors of the sensation labels in the reference article, from blue (cold) to red (hot).
+    /// </summary>
+    public static string ToColorHex(this DiscomfortLevel level) => level switch
+    {
+        DiscomfortLevel.Cold => "#0673B6",
+        DiscomfortLevel.Chilly => "#298B97",
+        DiscomfortLevel.Neutral => "#5CA869",
+        DiscomfortLevel.Pleasant => "#8BC43F",
+        DiscomfortLevel.NotHot => "#9EA53B",
+        DiscomfortLevel.SlightlyHot => "#B37F34",
+        DiscomfortLevel.HotAndSweaty => "#CA562D",
+        DiscomfortLevel.UnbearablyHot => "#EA1F25",
+        _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Unknown discomfort level")
+    };
 }

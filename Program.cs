@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using SwitchBotHomeControl.Api;
 using SwitchBotHomeControl.Monitoring;
 using SwitchBotHomeControl.Notifications;
+using SwitchBotHomeControl.Tray;
 using SwitchBotHomeControl.WebServer.Controllers;
 
 namespace SwitchBotHomeControl;
@@ -16,6 +17,13 @@ class Program
     private static WebApplication? _app;
     private static SwitchBotClient? _client;
     private static readonly int Port = 3000;
+
+    // Discomfort index shown by the tray icon, updated by DiscomfortMonitorService every 10 minutes
+    private static readonly LatestMeterReadings LatestReadings = new();
+    private static readonly Color UnknownLevelColor = Color.Gray;
+    private static string? _trayMeterName;
+    private static Icon? _levelIcon;
+    private static readonly List<ToolStripMenuItem> DiscomfortItems = new();
 
     [STAThread]
     static void Main(string[] args)
@@ -72,6 +80,13 @@ class Program
             discordWebhookUrl = null;
         }
 
+        // The meter whose discomfort index colors the tray icon (defaults to the first meter)
+        _trayMeterName = Environment.GetEnvironmentVariable("TRAY_METER_NAME");
+        if (string.IsNullOrWhiteSpace(_trayMeterName))
+        {
+            _trayMeterName = null;
+        }
+
         // Initialize SwitchBot client
         _client = new SwitchBotClient(token, secret);
 
@@ -109,11 +124,16 @@ class Program
             builder.Services.AddControllers();
             builder.Services.AddSingleton(new SwitchBotClient(token, secret));
 
+            // Meter readings are recorded for the history chart and the tray icon even without Discord
+            var dataPath = Path.Combine(projectRoot, "data");
+            builder.Services.AddSingleton(new MeterHistoryStore(Path.Combine(dataPath, "meter-history")));
+            builder.Services.AddSingleton(new NotificationStateStore(Path.Combine(dataPath, "notification-state.json")));
+            builder.Services.AddSingleton(LatestReadings);
             if (discordWebhookUrl != null)
             {
                 builder.Services.AddSingleton(new DiscordWebhookClient(discordWebhookUrl));
-                builder.Services.AddHostedService<DiscomfortMonitorService>();
             }
+            builder.Services.AddHostedService<DiscomfortMonitorService>();
 
             // Configure Kestrel to listen on specific port
             builder.WebHost.UseUrls($"http://localhost:{Port}");
@@ -155,10 +175,11 @@ class Program
 
     static void CreateTrayIcon()
     {
+        _levelIcon = CircleIcon.CreateIcon(UnknownLevelColor, SystemInformation.SmallIconSize.Width);
         _trayIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
-            Text = "SwitchBot Home Control",
+            Icon = _levelIcon,
+            Text = TrayDiscomfortView.AppName,
             Visible = true
         };
 
@@ -172,6 +193,21 @@ class Program
         contextMenu.Items.Add(openItem);
 
         contextMenu.Items.Add(new ToolStripSeparator());
+
+        // Discomfort index of every meter; the items are rebuilt on each monitoring cycle
+        var discomfortHeader = new ToolStripMenuItem(TrayDiscomfortView.FormatHeader(null)) { Enabled = false };
+        contextMenu.Items.Add(discomfortHeader);
+        contextMenu.Items.Add(new ToolStripSeparator());
+
+        // Creating the menu installed the WinForms synchronization context on this (UI) thread
+        var uiContext = SynchronizationContext.Current
+            ?? throw new InvalidOperationException("Tray icon must be created on the UI thread");
+        LatestReadings.Updated += snapshot =>
+            uiContext.Post(_ => ApplyDiscomfortSnapshot(contextMenu, discomfortHeader, snapshot), null);
+        if (LatestReadings.Current is { } firstSnapshot)
+        {
+            ApplyDiscomfortSnapshot(contextMenu, discomfortHeader, firstSnapshot);
+        }
 
         // Add placeholder for bulb controls
         var loadingItem = new ToolStripMenuItem("💡 電球を読込中...");
@@ -270,6 +306,61 @@ class Program
 
         _trayIcon.DoubleClick += (s, e) => OpenBrowser($"http://localhost:{Port}");
     }
+
+    /// <summary>
+    /// Recolors the tray icon and rebuilds the per-meter menu items. Must run on the UI thread.
+    /// </summary>
+    static void ApplyDiscomfortSnapshot(ContextMenuStrip contextMenu, ToolStripMenuItem header, MeterSnapshot snapshot)
+    {
+        if (_trayIcon == null)
+        {
+            return;
+        }
+
+        header.Text = TrayDiscomfortView.FormatHeader(snapshot);
+
+        foreach (var item in DiscomfortItems)
+        {
+            contextMenu.Items.Remove(item);
+            item.Image?.Dispose();
+            item.Dispose();
+        }
+        DiscomfortItems.Clear();
+
+        var menuIconSize = SystemInformation.SmallIconSize.Width;
+        if (snapshot.Records.Count == 0)
+        {
+            DiscomfortItems.Add(new ToolStripMenuItem("取得できませんでした") { Enabled = false });
+        }
+        foreach (var record in snapshot.Records)
+        {
+            var item = new ToolStripMenuItem(EscapeMnemonic(TrayDiscomfortView.FormatMenuLine(record)))
+            {
+                Image = CircleIcon.CreateBitmap(ColorTranslator.FromHtml(record.Level.ToColorHex()), menuIconSize)
+            };
+            item.Click += (s, e) => OpenBrowser($"http://localhost:{Port}");
+            DiscomfortItems.Add(item);
+        }
+
+        var insertAt = contextMenu.Items.IndexOf(header) + 1;
+        foreach (var item in DiscomfortItems)
+        {
+            contextMenu.Items.Insert(insertAt++, item);
+        }
+
+        var iconMeter = TrayDiscomfortView.SelectIconMeter(snapshot.Records, _trayMeterName);
+        var color = iconMeter == null ? UnknownLevelColor : ColorTranslator.FromHtml(iconMeter.Level.ToColorHex());
+        var previousIcon = _levelIcon;
+        _levelIcon = CircleIcon.CreateIcon(color, SystemInformation.SmallIconSize.Width);
+        _trayIcon.Icon = _levelIcon;
+        _trayIcon.Text = TrayDiscomfortView.FormatTooltip(iconMeter);
+        previousIcon?.Dispose();
+    }
+
+    /// <summary>
+    /// Menu texts treat "&amp;" as an access key marker; device names must show it literally.
+    /// </summary>
+    static string EscapeMnemonic(string text) => text.Replace("&", "&&");
 
     static async Task ControlDeviceAsync(string deviceId, string command, string deviceName)
     {

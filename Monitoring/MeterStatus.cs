@@ -2,8 +2,6 @@ using System.Text.Json;
 
 namespace SwitchBotHomeControl.Monitoring;
 
-public record MeterReading(string DeviceName, double Temperature, double Humidity);
-
 public static class MeterStatus
 {
     // deviceType values of SwitchBot thermo-hygrometers (WoIOSensor is the Outdoor Meter)

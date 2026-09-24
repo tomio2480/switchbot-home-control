@@ -50,17 +50,35 @@ public class DiscomfortIndexTests
         Assert.Equal(expected, level.ToLabel());
     }
 
+    // Colors follow the sensation labels in the reference article
     [Theory]
-    [InlineData(DiscomfortLevel.Neutral, true)]
-    [InlineData(DiscomfortLevel.Pleasant, true)]
-    [InlineData(DiscomfortLevel.Cold, false)]
-    [InlineData(DiscomfortLevel.Chilly, false)]
-    [InlineData(DiscomfortLevel.NotHot, false)]
-    [InlineData(DiscomfortLevel.SlightlyHot, false)]
-    [InlineData(DiscomfortLevel.HotAndSweaty, false)]
-    [InlineData(DiscomfortLevel.UnbearablyHot, false)]
-    public void IsComfortable_OnlyForNeutralAndPleasant(DiscomfortLevel level, bool expected)
+    [InlineData(DiscomfortLevel.Cold, "#0673B6")]
+    [InlineData(DiscomfortLevel.Chilly, "#298B97")]
+    [InlineData(DiscomfortLevel.Neutral, "#5CA869")]
+    [InlineData(DiscomfortLevel.Pleasant, "#8BC43F")]
+    [InlineData(DiscomfortLevel.NotHot, "#9EA53B")]
+    [InlineData(DiscomfortLevel.SlightlyHot, "#B37F34")]
+    [InlineData(DiscomfortLevel.HotAndSweaty, "#CA562D")]
+    [InlineData(DiscomfortLevel.UnbearablyHot, "#EA1F25")]
+    public void ToColorHex_FollowsReferenceArticle(DiscomfortLevel level, string expected)
     {
-        Assert.Equal(expected, level.IsComfortable());
+        Assert.Equal(expected, level.ToColorHex());
+    }
+
+    [Fact]
+    public void LowerBound_IsNullOnlyForTheLowestLevel()
+    {
+        Assert.Null(DiscomfortLevel.Cold.LowerBound());
+    }
+
+    [Fact]
+    public void LowerBound_AgreesWithClassify()
+    {
+        foreach (var level in Enum.GetValues<DiscomfortLevel>().Where(l => l != DiscomfortLevel.Cold))
+        {
+            var lowerBound = level.LowerBound()!.Value;
+            Assert.Equal(level, DiscomfortIndex.Classify(lowerBound));
+            Assert.Equal(level - 1, DiscomfortIndex.Classify(lowerBound - 0.1));
+        }
     }
 }

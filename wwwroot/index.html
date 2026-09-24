@@ -329,9 +329,178 @@
             font-weight: 600;
         }
 
+        /* Discomfort index history */
+        .chart-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .chart-header h2 {
+            color: #333;
+            font-size: 1.5em;
+        }
+
+        .range-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .range-buttons button {
+            background: #eef0fb;
+            color: #3b3f73;
+            padding: 6px 14px;
+            font-size: 0.9em;
+        }
+
+        .range-buttons button:hover {
+            background: #dfe3f8;
+            box-shadow: none;
+        }
+
+        .range-buttons button[aria-pressed="true"] {
+            background: #667eea;
+            color: white;
+        }
+
+        .discomfort-current {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .current-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            color: #333;
+            font-size: 0.95em;
+        }
+
+        .level-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, 0.35);
+            flex-shrink: 0;
+        }
+
+        .chart-area {
+            position: relative;
+            width: 100%;
+        }
+
+        .chart-area svg {
+            display: block;
+            width: 100%;
+            height: auto;
+            font-family: inherit;
+        }
+
+        .chart-empty {
+            padding: 40px 10px;
+            text-align: center;
+            color: #666;
+        }
+
+        .chart-tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(33, 37, 41, 0.92);
+            color: white;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            line-height: 1.5;
+            white-space: nowrap;
+            display: none;
+        }
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 10px;
+            color: #444;
+            font-size: 0.9em;
+        }
+
+        .chart-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chart-note {
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.85em;
+        }
+
+        .history-table-wrap {
+            margin-top: 10px;
+        }
+
+        .history-table-wrap summary {
+            cursor: pointer;
+            color: #3b3f73;
+            font-weight: 500;
+        }
+
+        .history-table-scroll {
+            max-height: 320px;
+            overflow: auto;
+            margin-top: 8px;
+        }
+
+        .history-table {
+            border-collapse: collapse;
+            font-size: 0.85em;
+            color: #333;
+            white-space: nowrap;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 4px 10px;
+            border-bottom: 1px solid #eee;
+            text-align: right;
+        }
+
+        .history-table th {
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+        }
+
+        .history-table td:first-child,
+        .history-table th:first-child {
+            text-align: left;
+        }
+
         @media (max-width: 768px) {
             .devices-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .chart-card {
+                padding: 16px;
             }
 
             h1 {
@@ -350,6 +519,26 @@
             <h1>🏠 SwitchBot Home Control</h1>
             <p class="subtitle">ブラウザからデバイスを制御</p>
         </header>
+
+        <section class="chart-card" aria-labelledby="discomfort-title">
+            <div class="chart-header">
+                <h2 id="discomfort-title">🌡️ 不快指数の推移</h2>
+                <div class="range-buttons" role="group" aria-label="表示する期間">
+                    <button type="button" data-hours="6" aria-pressed="false">6 時間</button>
+                    <button type="button" data-hours="24" aria-pressed="true">24 時間</button>
+                    <button type="button" data-hours="72" aria-pressed="false">3 日</button>
+                    <button type="button" data-hours="168" aria-pressed="false">7 日</button>
+                </div>
+            </div>
+            <div id="discomfort-current" class="discomfort-current" aria-live="polite"></div>
+            <div id="discomfort-chart" class="chart-area"></div>
+            <div id="discomfort-legend" class="chart-legend"></div>
+            <p class="chart-note">10 分おきに記録した気温と湿度から計算しています．背景の色は体感の区分です．</p>
+            <details id="history-table-wrap" class="history-table-wrap">
+                <summary>記録を表で見る</summary>
+                <div id="history-table" class="history-table-scroll"></div>
+            </details>
+        </section>
 
         <div class="controls">
             <button onclick="loadDevices()">🔄 更新</button>
@@ -372,7 +561,307 @@
         // Load devices on page load
         window.addEventListener('DOMContentLoaded', () => {
             loadDevices();
+            initDiscomfortHistory();
         });
+
+        // ---- Discomfort index history ----
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+        const SERIES_STYLES = [
+            { color: '#1f2937', dash: '' },
+            { color: '#2563eb', dash: '6 3' },
+            { color: '#7c3aed', dash: '2 3' },
+            { color: '#db2777', dash: '8 3 2 3' },
+            { color: '#0e7490', dash: '' },
+        ];
+        let discomfortHours = 24;
+        let discomfortData = null;
+
+        function initDiscomfortHistory() {
+            document.querySelectorAll('.range-buttons button').forEach(button => {
+                button.addEventListener('click', () => {
+                    discomfortHours = Number(button.dataset.hours);
+                    document.querySelectorAll('.range-buttons button').forEach(b =>
+                        b.setAttribute('aria-pressed', String(b === button)));
+                    loadDiscomfortHistory();
+                });
+            });
+            document.getElementById('history-table-wrap').addEventListener('toggle', renderHistoryTable);
+
+            let resizeTimer = null;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(renderDiscomfortChart, 200);
+            });
+            loadDiscomfortHistory();
+        }
+
+        async function loadDiscomfortHistory() {
+            const chart = document.getElementById('discomfort-chart');
+            try {
+                const response = await fetch(`/api/meters/history?hours=${discomfortHours}`);
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error);
+                }
+                discomfortData = data;
+            } catch (error) {
+                discomfortData = null;
+                chart.replaceChildren(textElement('div', 'chart-empty', '不快指数の記録を読み込めませんでした: ' + error.message));
+                return;
+            }
+            renderDiscomfortCurrent();
+            renderDiscomfortChart();
+            renderHistoryTable();
+        }
+
+        function textElement(tag, className, text) {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            element.textContent = text;
+            return element;
+        }
+
+        function svgElement(tag, attributes) {
+            const element = document.createElementNS(SVG_NS, tag);
+            Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+            return element;
+        }
+
+        function levelOf(index) {
+            const levels = discomfortData.levels;
+            for (let i = levels.length - 1; i >= 0; i--) {
+                if (levels[i].lowerBound === null || index >= levels[i].lowerBound) return levels[i];
+            }
+            return levels[0];
+        }
+
+        function formatTime(date, withDate) {
+            const hh = String(date.getHours()).padStart(2, '0');
+            const mm = String(date.getMinutes()).padStart(2, '0');
+            return withDate ? `${date.getMonth() + 1}/${date.getDate()} ${hh}:${mm}` : `${hh}:${mm}`;
+        }
+
+        function describePoint(point) {
+            return `${point.index.toFixed(1)}「${point.label}」（${point.temperature.toFixed(1)}℃ / ${point.humidity}%）`;
+        }
+
+        function renderDiscomfortCurrent() {
+            const container = document.getElementById('discomfort-current');
+            container.replaceChildren();
+            discomfortData.devices.forEach(device => {
+                const last = device.points[device.points.length - 1];
+                const chip = document.createElement('div');
+                chip.className = 'current-chip';
+                const dot = document.createElement('span');
+                dot.className = 'level-dot';
+                dot.style.background = levelOf(last.index).color;
+                chip.append(dot, textElement('strong', '', device.deviceName),
+                    textElement('span', '', `${describePoint(last)} ${formatTime(new Date(last.time), true)} 時点`));
+                container.appendChild(chip);
+            });
+        }
+
+        function renderDiscomfortChart() {
+            const chart = document.getElementById('discomfort-chart');
+            const legend = document.getElementById('discomfort-legend');
+            if (!discomfortData) return;
+
+            const devicesWithData = discomfortData.devices.filter(d => d.points.length > 0);
+            legend.replaceChildren();
+            if (devicesWithData.length === 0) {
+                chart.replaceChildren(textElement('div', 'chart-empty',
+                    'まだ記録がありません．アプリの起動中に 10 分おきに記録します．'));
+                return;
+            }
+
+            const width = Math.max(chart.clientWidth, 320);
+            const height = width < 600 ? 260 : 340;
+            const margin = { top: 10, right: 12, bottom: 28, left: 40 };
+            const plotWidth = width - margin.left - margin.right;
+            const plotHeight = height - margin.top - margin.bottom;
+
+            const xMin = new Date(discomfortData.from).getTime();
+            const xMax = new Date(discomfortData.to).getTime();
+            const indices = devicesWithData.flatMap(d => d.points.map(p => p.index));
+            const yMin = Math.floor((Math.min(...indices) - 2) / 5) * 5;
+            const yMax = Math.ceil((Math.max(...indices) + 2) / 5) * 5;
+            const x = t => margin.left + (t - xMin) / (xMax - xMin) * plotWidth;
+            const y = v => margin.top + (yMax - v) / (yMax - yMin) * plotHeight;
+
+            const svg = svgElement('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img' });
+            const summary = devicesWithData.map(d => {
+                const last = d.points[d.points.length - 1];
+                return `${d.deviceName} は最新 ${describePoint(last)}`;
+            }).join('，');
+            svg.setAttribute('aria-label', `過去 ${discomfortHours} 時間の不快指数の推移．${summary}．`);
+
+            // Background bands for the sensation levels
+            const levels = discomfortData.levels;
+            levels.forEach((level, i) => {
+                const lower = Math.max(level.lowerBound ?? -Infinity, yMin);
+                const upper = Math.min(i + 1 < levels.length ? levels[i + 1].lowerBound : Infinity, yMax);
+                if (upper <= lower) return;
+                svg.appendChild(svgElement('rect', {
+                    x: margin.left, y: y(upper), width: plotWidth, height: y(lower) - y(upper),
+                    fill: level.color, 'fill-opacity': 0.16,
+                }));
+                if (y(lower) - y(upper) >= 14) {
+                    const label = svgElement('text', {
+                        x: margin.left + plotWidth - 6, y: y(upper) + 13,
+                        'text-anchor': 'end', 'font-size': 11, fill: level.color, 'font-weight': 600,
+                    });
+                    label.textContent = level.label;
+                    svg.appendChild(label);
+                }
+            });
+
+            // Horizontal grid lines every 5 points
+            for (let v = yMin; v <= yMax; v += 5) {
+                svg.appendChild(svgElement('line', {
+                    x1: margin.left, x2: margin.left + plotWidth, y1: y(v), y2: y(v),
+                    stroke: '#000', 'stroke-opacity': 0.08,
+                }));
+                const label = svgElement('text', {
+                    x: margin.left - 6, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#555',
+                });
+                label.textContent = v;
+                svg.appendChild(label);
+            }
+
+            // Time ticks aligned to local hours
+            const hourMs = 3600 * 1000;
+            const rangeHours = (xMax - xMin) / hourMs;
+            const stepHours = rangeHours <= 6 ? 1 : rangeHours <= 24 ? 3 : rangeHours <= 72 ? 12 : 24;
+            const firstTick = new Date(xMin);
+            firstTick.setMinutes(0, 0, 0);
+            while (firstTick.getTime() < xMin || firstTick.getHours() % stepHours !== 0) {
+                firstTick.setTime(firstTick.getTime() + hourMs);
+            }
+            for (let t = firstTick.getTime(); t <= xMax; t += stepHours * hourMs) {
+                const tick = new Date(t);
+                svg.appendChild(svgElement('line', {
+                    x1: x(t), x2: x(t), y1: margin.top, y2: margin.top + plotHeight,
+                    stroke: '#000', 'stroke-opacity': 0.06,
+                }));
+                const label = svgElement('text', {
+                    x: x(t), y: height - 8, 'text-anchor': 'middle', 'font-size': 11, fill: '#555',
+                });
+                label.textContent = formatTime(tick, rangeHours > 24 && tick.getHours() === 0);
+                svg.appendChild(label);
+            }
+
+            // One line per meter; a gap longer than 1.5 intervals (app stopped, meter skipped) breaks the line
+            const maxGapMs = discomfortData.intervalMinutes * 60 * 1000 * 1.5;
+            devicesWithData.forEach((device, i) => {
+                const style = SERIES_STYLES[i % SERIES_STYLES.length];
+                let path = '';
+                device.points.forEach((point, j) => {
+                    const t = new Date(point.time).getTime();
+                    const previous = j > 0 ? new Date(device.points[j - 1].time).getTime() : null;
+                    const next = j + 1 < device.points.length ? new Date(device.points[j + 1].time).getTime() : null;
+                    const startsSegment = previous === null || t - previous > maxGapMs;
+                    const isolated = startsSegment && (next === null || next - t > maxGapMs);
+                    path += `${startsSegment ? 'M' : 'L'}${x(t).toFixed(1)},${y(point.index).toFixed(1)}`;
+                    if (isolated) {
+                        svg.appendChild(svgElement('circle', { cx: x(t), cy: y(point.index), r: 2.5, fill: style.color }));
+                    }
+                });
+                svg.appendChild(svgElement('path', {
+                    d: path, fill: 'none', stroke: style.color, 'stroke-width': 2,
+                    'stroke-dasharray': style.dash, 'stroke-linejoin': 'round',
+                }));
+
+                const item = document.createElement('span');
+                const sample = svgElement('svg', { width: 28, height: 10, 'aria-hidden': 'true' });
+                sample.appendChild(svgElement('line', {
+                    x1: 0, x2: 28, y1: 5, y2: 5, stroke: style.color, 'stroke-width': 2, 'stroke-dasharray': style.dash,
+                }));
+                item.append(sample, document.createTextNode(device.deviceName));
+                legend.appendChild(item);
+            });
+
+            // Hover: show the values of every meter at the nearest recorded time
+            const cursor = svgElement('line', {
+                y1: margin.top, y2: margin.top + plotHeight, stroke: '#333', 'stroke-width': 1, visibility: 'hidden',
+            });
+            svg.appendChild(cursor);
+            const overlay = svgElement('rect', {
+                x: margin.left, y: margin.top, width: plotWidth, height: plotHeight, fill: 'transparent',
+            });
+            svg.appendChild(overlay);
+
+            const tooltip = textElement('div', 'chart-tooltip', '');
+            overlay.addEventListener('pointermove', event => {
+                const box = svg.getBoundingClientRect();
+                const px = (event.clientX - box.left) * width / box.width;
+                const t = xMin + (px - margin.left) / plotWidth * (xMax - xMin);
+                const nearest = devicesWithData.map(d => ({
+                    device: d,
+                    point: d.points.reduce((best, p) =>
+                        Math.abs(new Date(p.time) - t) < Math.abs(new Date(best.time) - t) ? p : best),
+                })).filter(n => Math.abs(new Date(n.point.time) - t) <= maxGapMs);
+                if (nearest.length === 0) {
+                    tooltip.style.display = 'none';
+                    cursor.setAttribute('visibility', 'hidden');
+                    return;
+                }
+                const at = new Date(nearest[0].point.time);
+                cursor.setAttribute('x1', x(at.getTime()));
+                cursor.setAttribute('x2', x(at.getTime()));
+                cursor.setAttribute('visibility', 'visible');
+                tooltip.replaceChildren(textElement('div', '', formatTime(at, true)));
+                nearest.forEach(n => tooltip.appendChild(textElement('div', '', `${n.device.deviceName}: ${describePoint(n.point)}`)));
+                tooltip.style.display = 'block';
+                const scale = box.width / width;
+                const left = x(at.getTime()) * scale;
+                tooltip.style.left = `${Math.min(left + 12, box.width - tooltip.offsetWidth - 4)}px`;
+                tooltip.style.top = `${margin.top * scale + 4}px`;
+            });
+            overlay.addEventListener('pointerleave', () => {
+                tooltip.style.display = 'none';
+                cursor.setAttribute('visibility', 'hidden');
+            });
+
+            chart.replaceChildren(svg, tooltip);
+        }
+
+        // Table view: rendered only while opened, since 7 days hold about 1,000 rows per meter
+        function renderHistoryTable() {
+            const wrap = document.getElementById('history-table-wrap');
+            const container = document.getElementById('history-table');
+            if (!wrap.open || !discomfortData) {
+                container.replaceChildren();
+                return;
+            }
+
+            const devicesWithData = discomfortData.devices.filter(d => d.points.length > 0);
+            const rows = new Map();
+            devicesWithData.forEach((device, i) => device.points.forEach(point => {
+                // Meters read in the same cycle share a time; round to the minute to be safe
+                const key = Math.round(new Date(point.time).getTime() / 60000) * 60000;
+                if (!rows.has(key)) rows.set(key, new Array(devicesWithData.length).fill(null));
+                rows.get(key)[i] = point;
+            }));
+
+            const table = document.createElement('table');
+            table.className = 'history-table';
+            const caption = textElement('caption', '', `過去 ${discomfortHours} 時間の記録（新しい順）`);
+            caption.style.textAlign = 'left';
+            const headRow = document.createElement('tr');
+            headRow.appendChild(textElement('th', '', '時刻'));
+            devicesWithData.forEach(d => headRow.appendChild(textElement('th', '', d.deviceName)));
+            const head = document.createElement('thead');
+            head.appendChild(headRow);
+            const body = document.createElement('tbody');
+            [...rows.keys()].sort((a, b) => b - a).forEach(key => {
+                const row = document.createElement('tr');
+                row.appendChild(textElement('td', '', formatTime(new Date(key), true)));
+                rows.get(key).forEach(point => row.appendChild(textElement('td', '', point ? describePoint(point) : '―')));
+                body.appendChild(row);
+            });
+            table.append(caption, head, body);
+            container.replaceChildren(table);
+        }
 
         async function loadDevices() {
             const loading = document.getElementById('loading');

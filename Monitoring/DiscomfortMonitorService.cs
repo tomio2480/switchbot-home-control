@@ -6,31 +6,39 @@ using SwitchBotHomeControl.Notifications;
 namespace SwitchBotHomeControl.Monitoring;
 
 /// <summary>
-/// Every 10 minutes, reads all thermo-hygrometers and posts to Discord
-/// when any of them is neither "何も感じない" nor "快い".
+/// Every 10 minutes, reads all thermo-hygrometers, records the readings,
+/// updates the tray icon and posts sensation level changes to Discord (when configured).
 /// </summary>
 public class DiscomfortMonitorService : BackgroundService
 {
     private const int SwitchBotSuccessCode = 100;
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(10);
 
     private readonly SwitchBotClient _switchBot;
-    private readonly DiscordWebhookClient _discord;
+    private readonly MeterHistoryStore _history;
+    private readonly NotificationStateStore _notificationState;
+    private readonly LatestMeterReadings _latest;
     private readonly ILogger<DiscomfortMonitorService> _logger;
+    private readonly DiscordWebhookClient? _discord;
 
     public DiscomfortMonitorService(
         SwitchBotClient switchBot,
-        DiscordWebhookClient discord,
-        ILogger<DiscomfortMonitorService> logger)
+        MeterHistoryStore history,
+        NotificationStateStore notificationState,
+        LatestMeterReadings latest,
+        ILogger<DiscomfortMonitorService> logger,
+        DiscordWebhookClient? discord = null)
     {
         _switchBot = switchBot;
-        _discord = discord;
+        _history = history;
+        _notificationState = notificationState;
+        _latest = latest;
         _logger = logger;
+        _discord = discord;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(CheckInterval);
+        using var timer = new PeriodicTimer(DiscomfortChangeDetector.Interval);
         do
         {
             try
@@ -52,32 +60,67 @@ public class DiscomfortMonitorService : BackgroundService
 
     private async Task CheckAsync(CancellationToken cancellationToken)
     {
-        var devices = await _switchBot.GetDevicesAsync();
-        if (devices.StatusCode != SwitchBotSuccessCode)
-        {
-            throw new InvalidOperationException($"Failed to get device list: {devices.Message}");
-        }
-
-        var readings = new List<MeterReading>();
-        foreach (var meter in devices.Body.DeviceList.Where(d => MeterStatus.IsThermoHygrometer(d.DeviceType)))
-        {
-            var reading = await ReadMeterAsync(meter.DeviceId, meter.DeviceName);
-            if (reading != null)
-            {
-                readings.Add(reading);
-            }
-        }
-
-        var alerts = DiscomfortAlert.FromReadings(readings);
-        if (alerts.Count == 0)
+        var now = DateTimeOffset.Now;
+        var records = await ReadMetersAsync(now);
+        _latest.Update(new MeterSnapshot(now, records));
+        if (records.Count == 0)
         {
             return;
         }
 
-        await _discord.SendAsync(DiscomfortAlert.FormatMessage(alerts, DateTime.Now), cancellationToken);
+        _history.Append(records);
+        if (_discord == null)
+        {
+            return;
+        }
+
+        var history = _history.Read(now - DiscomfortChangeDetector.LookBack, now);
+        var changes = DiscomfortChangeDetector.DetectAll(records, history, _notificationState.GetLastNotified);
+        if (changes.Count == 0)
+        {
+            return;
+        }
+
+        await _discord.SendAsync(DiscomfortChange.FormatMessage(changes, now.LocalDateTime), cancellationToken);
+        // Saved only after a successful post, so that a failed post is retried in a later cycle
+        _notificationState.SetLastNotified(changes.Select(c => (c.Current.DeviceId, c.Current.Level)));
     }
 
-    private async Task<MeterReading?> ReadMeterAsync(string deviceId, string deviceName)
+    /// <summary>
+    /// Readings of every meter that returned valid values; empty when the device list is unavailable.
+    /// </summary>
+    private async Task<IReadOnlyList<MeterRecord>> ReadMetersAsync(DateTimeOffset now)
+    {
+        try
+        {
+            var devices = await _switchBot.GetDevicesAsync();
+            if (devices.StatusCode != SwitchBotSuccessCode)
+            {
+                _logger.LogError("Failed to get device list: {Message}", devices.Message);
+                return Array.Empty<MeterRecord>();
+            }
+
+            var records = new List<MeterRecord>();
+            foreach (var meter in devices.Body.DeviceList.Where(d => MeterStatus.IsThermoHygrometer(d.DeviceType)))
+            {
+                var record = await ReadMeterAsync(now, meter.DeviceId, meter.DeviceName);
+                if (record != null)
+                {
+                    records.Add(record);
+                }
+            }
+
+            return records;
+        }
+        catch (Exception ex)
+        {
+            // Report the failure as an empty snapshot so the tray icon does not keep showing stale values
+            _logger.LogError(ex, "Failed to get device list");
+            return Array.Empty<MeterRecord>();
+        }
+    }
+
+    private async Task<MeterRecord?> ReadMeterAsync(DateTimeOffset now, string deviceId, string deviceName)
     {
         try
         {
@@ -94,11 +137,11 @@ public class DiscomfortMonitorService : BackgroundService
                 return null;
             }
 
-            return new MeterReading(deviceName, temperature, humidity);
+            return new MeterRecord(now, deviceId, deviceName, temperature, humidity);
         }
         catch (Exception ex)
         {
-            // One failing meter (HTTP error, timeout, malformed JSON) should not hide alerts from the others.
+            // One failing meter (HTTP error, timeout, malformed JSON) should not hide the others.
             // SwitchBotClient takes no cancellation token, so a cancellation here is an HTTP timeout.
             _logger.LogWarning(ex, "Skipped {DeviceName}: status request failed", deviceName);
             return null;
